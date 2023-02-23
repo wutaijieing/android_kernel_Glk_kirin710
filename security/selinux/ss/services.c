@@ -549,14 +549,19 @@ static void type_attribute_bounds_av(struct context *scontext,
 	struct type_datum *target;
 	u32 masked = 0;
 
-	source	= policydb.type_val_to_struct[scontext->type - 1];
+	source = flex_array_get_ptr(policydb.type_val_to_struct_array,
+				    scontext->type - 1);
 	BUG_ON(!source);
+
+	target = flex_array_get_ptr(policydb.type_val_to_struct_array,
+				    tcontext->type - 1);
+	BUG_ON(!target);
 
 	if (!source->bounds)
 		return;
 
-	target	= policydb.type_val_to_struct[tcontext->type - 1];
-	BUG_ON(!target);
+/* 	target	= policydb.type_val_to_struct[tcontext->type - 1];
+	BUG_ON(!target); */
 
 	memset(&lo_avd, 0, sizeof(lo_avd));
 
@@ -880,7 +885,8 @@ int security_bounded_transition(u32 old_sid, u32 new_sid)
 
 	index = new_context->type;
 	while (true) {
-		type = policydb.type_val_to_struct[index - 1];
+		type = flex_array_get_ptr(policydb.type_val_to_struct_array,
+					  index - 1);
 		BUG_ON(!type);
 
 		/* not bounded anymore */
