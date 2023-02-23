@@ -48,6 +48,7 @@
 #include <linux/in.h>
 #include <linux/sched.h>
 #include <linux/audit.h>
+#include <linux/flex_array.h>
 #include <linux/mutex.h>
 #include <linux/selinux.h>
 #include <linux/vmalloc.h>
@@ -653,9 +654,9 @@ static void context_struct_compute_av(struct context *scontext,
 	 */
 	avkey.target_class = tclass;
 	avkey.specified = AVTAB_AV | AVTAB_XPERMS;
-	sattr = &policydb.type_attr_map[scontext->type - 1];
+	sattr = flex_array_get(policydb.type_attr_map_array, scontext->type - 1);
 	BUG_ON(!sattr);
-	tattr = &policydb.type_attr_map[tcontext->type - 1];
+	tattr = flex_array_get(policydb.type_attr_map_array, tcontext->type - 1);
 	BUG_ON(!tattr);
 	ebitmap_for_each_positive_bit(sattr, snode, i) {
 		ebitmap_for_each_positive_bit(tattr, tnode, j) {
@@ -1036,9 +1037,11 @@ void security_compute_xperms_decision(u32 ssid,
 
 	avkey.target_class = tclass;
 	avkey.specified = AVTAB_XPERMS;
-	sattr = policydb.type_attr_map + scontext->type - 1;
+	sattr = flex_array_get(policydb.type_attr_map_array,
+				scontext->type - 1);
 	BUG_ON(!sattr);
-	tattr = policydb.type_attr_map + tcontext->type - 1;
+	tattr = flex_array_get(policydb.type_attr_map_array,
+				tcontext->type - 1);
 	BUG_ON(!tattr);
 	ebitmap_for_each_positive_bit(sattr, snode, i) {
 		ebitmap_for_each_positive_bit(tattr, tnode, j) {

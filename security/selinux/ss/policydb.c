@@ -31,6 +31,7 @@
 #include <linux/string.h>
 #include <linux/errno.h>
 #include <linux/audit.h>
+#include <linux/flex_array.h>
 #include "security.h"
 
 #include "policydb.h"
@@ -816,11 +817,18 @@ void policydb_destroy(struct policydb *p)
 	hashtab_map(p->range_tr, range_tr_destroy, NULL);
 	hashtab_destroy(p->range_tr);
 
-	if (p->type_attr_map) {
-		for (i = 0; i < p->p_types.nprim; i++)
-			ebitmap_destroy(&p->type_attr_map[i]);
+	if (p->type_attr_map_array) {
+		for (i = 0; i < p->p_types.nprim; i++) {
+			struct ebitmap *e;
+
+			e = flex_array_get(p->type_attr_map_array, i);
+			if (!e)
+				continue;
+			ebitmap_destroy(e);
+		}
+		flex_array_free(p->type_attr_map_array);
 	}
-	pfree(selinux_pool, p->type_attr_map);
+/* 	pfree(selinux_pool, p->type_attr_map); */
 	ebitmap_destroy(&p->filename_trans_ttypes);
 	ebitmap_destroy(&p->policycaps);
 	ebitmap_destroy(&p->permissive_map);
@@ -2425,20 +2433,34 @@ int policydb_read(struct policydb *p, void *fp)
 	if (rc)
 		goto bad;
 
-	p->type_attr_map = pmalloc(selinux_pool,
-				   p->p_types.nprim * sizeof(struct ebitmap),
-				   GFP_KERNEL);
-	if (!p->type_attr_map)
+	rc = -ENOMEM;
+	p->type_attr_map_array = flex_array_alloc(sizeof(struct ebitmap),
+						  p->p_types.nprim,
+						  GFP_KERNEL | __GFP_ZERO);
+	if (!p->type_attr_map_array)
+		goto bad;
+
+	/* preallocate so we don't have to worry about the put ever failing */
+	rc = flex_array_prealloc(p->type_attr_map_array, 0, p->p_types.nprim - 1,
+				 GFP_KERNEL | __GFP_ZERO);
+	if (rc)
 		goto bad;
 
 	for (i = 0; i < p->p_types.nprim; i++) {
-		ebitmap_init(&p->type_attr_map[i], HISI_SELINUX_EBITMAP_RO);
+/* 		ebitmap_init(&p->type_attr_map[i], HISI_SELINUX_EBITMAP_RO); */
+		struct ebitmap *e = flex_array_get(p->type_attr_map_array, i);
+
+		BUG_ON(!e);
+		ebitmap_init(e, HISI_SELINUX_EBITMAP_RO);
 		if (p->policyvers >= POLICYDB_VERSION_AVTAB) {
-			if (ebitmap_read(&p->type_attr_map[i], fp, HISI_SELINUX_EBITMAP_RO))
+/* 			if (ebitmap_read(&p->type_attr_map[i], fp, HISI_SELINUX_EBITMAP_RO)) */
+			rc = ebitmap_read(e, fp, HISI_SELINUX_EBITMAP_RO);
+			if (rc)
 				goto bad;
 		}
 		/* add the type itself as the degenerate case */
-		if (ebitmap_set_bit(&p->type_attr_map[i], i, 1))
+		rc = ebitmap_set_bit(e, i, 1);
+		if (rc)
 				goto bad;
 	}
 
@@ -3391,7 +3413,7 @@ int policydb_write(struct policydb *p, void *fp)
 		return rc;
 
 	for (i = 0; i < p->p_types.nprim; i++) {
-		struct ebitmap *e = p->type_attr_map + i;
+		struct ebitmap *e = flex_array_get(p->type_attr_map_array, i);
 
 		BUG_ON(!e);
 		rc = ebitmap_write(e, fp);
